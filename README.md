@@ -2,6 +2,8 @@
 
 [English](#english) | [中文](#chinese)
 
+![Smart Image Resizer UI](docs/preview.png)
+
 ---
 
 <a name="english"></a>

@@ -35,4 +35,6 @@ Thumbs.db
 其他/
 
 # But allow documentation assets if any (example)
-# !docs/*.jpg
+!docs/
+!docs/*.png
+!docs/*.jpg
