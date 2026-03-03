@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+
+# Image Processing
+processed_images/
+processed_images_test/
+
+# Input Images (Ignore all image files by default)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.webp
+*.tiff
+Thumbs.db
+
+# Specific Input Directories (seen in logs)
+*_主图/
+*_商详图/
+其他/
+
+# But allow documentation assets if any (example)
+# !docs/*.jpg

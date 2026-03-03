@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能图片处理系统</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.5s; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        
+        .slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s ease-out; }
+        .slide-up-enter-from { transform: translateY(20px); opacity: 0; }
+        .slide-up-leave-to { transform: translateY(-20px); opacity: 0; }
+        
+        /* Custom scrollbar for logs */
+        .logs-container::-webkit-scrollbar { width: 8px; }
+        .logs-container::-webkit-scrollbar-track { background: #f1f1f1; }
+        .logs-container::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        .logs-container::-webkit-scrollbar-thumb:hover { background: #555; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-800 font-sans">
+    <div id="app" class="max-w-7xl mx-auto p-4 md:p-8">
+        
+        <!-- Header -->
+        <header class="mb-8 flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-2">
+                    <i data-lucide="image" class="w-8 h-8 text-blue-600"></i>
+                    智能图片处理系统
+                </h1>
+                <p class="text-gray-500 mt-1">自动化图片裁剪、缩放与压缩工具</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div v-if="isConnected" class="flex items-center text-green-600 text-sm font-medium bg-green-50 px-3 py-1 rounded-full border border-green-200">
+                    <span class="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
+                    系统在线
+                </div>
+                <div v-else class="flex items-center text-red-600 text-sm font-medium bg-red-50 px-3 py-1 rounded-full border border-red-200">
+                    <span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
+                    未连接
+                </div>
+            </div>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Left Column: Configuration & Controls -->
+            <div class="lg:col-span-1 space-y-6">
+                
+                <!-- Workspace Config -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                        <h2 class="font-semibold text-gray-800 flex items-center gap-2">
+                            <i data-lucide="folder-open" class="w-5 h-5 text-gray-500"></i>
+                            工作区设置
+                        </h2>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">输入目录 (Input Directory)</label>
+                            <div class="flex gap-2">
+                                <input type="text" v-model="config.input_dir" 
+                                    class="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm py-2 px-3 border" 
+                                    placeholder="输入绝对路径或 . (当前目录)">
+                            </div>
+                            <p class="text-xs text-gray-400 mt-1">默认为当前运行目录</p>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">输出目录 (Output Directory)</label>
+                            <input type="text" v-model="config.output_dir" 
+                                class="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm py-2 px-3 border" 
+                                placeholder="processed_images">
+                        </div>
+
+                        <button @click="scanDirectory" :disabled="isScanning || isProcessing"
+                            class="w-full bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 border border-gray-300 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2">
+                            <i data-lucide="scan-search" class="w-4 h-4" :class="{'animate-spin': isScanning}"></i>
+                            {{ isScanning ? '扫描中...' : '扫描目录' }}
+                        </button>
+
+                        <!-- Scan Results -->
+                        <transition name="slide-up">
+                            <div v-if="scanResult" class="bg-blue-50 rounded-lg p-4 border border-blue-100 mt-4">
+                                <h3 class="text-sm font-semibold text-blue-800 mb-2">扫描结果</h3>
+                                <div class="grid grid-cols-2 gap-2 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-blue-600">总图片:</span>
+                                        <span class="font-bold text-blue-900">{{ scanResult.total_images }}</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-blue-600">文件夹:</span>
+                                        <span class="font-bold text-blue-900">{{ scanResult.folders.length }}</span>
+                                    </div>
+                                    <div class="col-span-2 text-xs text-blue-500 mt-1 border-t border-blue-200 pt-2">
+                                        包含 {{ scanResult.main_images }} 张主图, {{ scanResult.detail_images }} 张商详图
+                                    </div>
+                                </div>
+                            </div>
+                        </transition>
+                    </div>
+                </div>
+
+                <!-- Processing Rules -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                        <h2 class="font-semibold text-gray-800 flex items-center gap-2">
+                            <i data-lucide="settings-2" class="w-5 h-5 text-gray-500"></i>
+                            处理规则
+                        </h2>
+                    </div>
+                    <div class="p-6 space-y-6">
+                        <!-- Main Image Rules -->
+                        <div class="space-y-3">
+                            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">主图设置 (Main Images)</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs text-gray-500 mb-1">最小尺寸 (px)</label>
+                                    <input type="number" v-model.number="config.main_min_size" class="w-full rounded border-gray-300 text-sm py-1.5 px-2 border">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-500 mb-1">最大尺寸 (px)</label>
+                                    <input type="number" v-model.number="config.main_max_size" class="w-full rounded border-gray-300 text-sm py-1.5 px-2 border">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Detail Image Rules -->
+                        <div class="space-y-3 pt-4 border-t border-gray-100">
+                            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">商详图设置 (Detail Images)</h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs text-gray-500 mb-1">宽度限制 (px)</label>
+                                    <div class="flex items-center gap-1">
+                                        <input type="number" v-model.number="config.detail_min_width" class="w-full rounded border-gray-300 text-sm py-1.5 px-2 border" placeholder="Min">
+                                        <span class="text-gray-300">-</span>
+                                        <input type="number" v-model.number="config.detail_max_width" class="w-full rounded border-gray-300 text-sm py-1.5 px-2 border" placeholder="Max">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-500 mb-1">切片高度 (px)</label>
+                                    <input type="number" v-model.number="config.detail_split_height" class="w-full rounded border-gray-300 text-sm py-1.5 px-2 border">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Output Quality -->
+                        <div class="space-y-3 pt-4 border-t border-gray-100">
+                            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">输出质量</h3>
+                            <div class="flex items-center justify-between">
+                                <label class="text-sm text-gray-600">最大文件大小 (MB)</label>
+                                <input type="number" v-model.number="config.max_size_mb" class="w-20 rounded border-gray-300 text-sm py-1.5 px-2 border text-right">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="px-6 py-4 bg-gray-50 border-t border-gray-100">
+                        <button @click="startProcessing" :disabled="isProcessing || !scanResult"
+                            class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2">
+                            <i v-if="isProcessing" data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
+                            <i v-else data-lucide="play" class="w-5 h-5"></i>
+                            {{ isProcessing ? '处理中...' : '开始处理' }}
+                        </button>
+                        
+                        <button v-if="scanResult && !isProcessing" @click="openFolder" 
+                            class="w-full mt-3 bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 border border-gray-300 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2">
+                            <i data-lucide="folder-open" class="w-4 h-4"></i>
+                            打开输出文件夹
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Monitoring & Logs -->
+            <div class="lg:col-span-2 space-y-6 flex flex-col h-[calc(100vh-8rem)]">
+                
+                <!-- Progress Card -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="font-semibold text-gray-800">当前进度</h2>
+                        <span class="text-sm font-medium" :class="statusColor">
+                            {{ statusText }}
+                        </span>
+                    </div>
+                    
+                    <!-- Progress Bar -->
+                    <div class="relative w-full h-4 bg-gray-100 rounded-full overflow-hidden">
+                        <div class="absolute top-0 left-0 h-full bg-blue-500 transition-all duration-300 ease-out"
+                            :style="{ width: progressPercentage + '%' }"></div>
+                    </div>
+                    
+                    <div class="flex justify-between mt-2 text-sm text-gray-500">
+                        <span>{{ progress.current }} / {{ progress.total }}</span>
+                        <span>{{ progressPercentage }}%</span>
+                    </div>
+                    
+                    <div class="mt-4 bg-gray-50 rounded p-3 text-sm text-gray-600 truncate border border-gray-100 flex items-center gap-2">
+                        <i data-lucide="file-image" class="w-4 h-4 text-gray-400"></i>
+                        <span v-if="progress.file">{{ progress.file }}</span>
+                        <span v-else class="text-gray-400 italic">等待开始...</span>
+                    </div>
+                </div>
+
+                <!-- Live Logs -->
+                <div class="bg-gray-900 rounded-xl shadow-sm border border-gray-800 flex-1 flex flex-col overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-800 bg-gray-800/50 flex items-center justify-between">
+                        <h2 class="font-mono text-sm font-semibold text-gray-300 flex items-center gap-2">
+                            <i data-lucide="terminal" class="w-4 h-4 text-green-500"></i>
+                            实时日志
+                        </h2>
+                        <button @click="logs = []" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                            清除日志
+                        </button>
+                    </div>
+                    <div class="flex-1 p-4 overflow-y-auto font-mono text-xs md:text-sm logs-container bg-gray-900" ref="logsContainer">
+                        <div v-if="logs.length === 0" class="h-full flex items-center justify-center text-gray-600 italic">
+                            暂无日志...
+                        </div>
+                        <div v-for="(log, index) in logs" :key="index" class="mb-1 leading-relaxed break-all"
+                            :class="{
+                                'text-gray-300': log.type === 'info',
+                                'text-yellow-400': log.type === 'warning',
+                                'text-red-400': log.type === 'error',
+                                'text-green-400': log.type === 'success'
+                            }">
+                            <span class="opacity-50 mr-2">[{{ log.time }}]</span>
+                            {{ log.message }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                // State
+                const isConnected = ref(false);
+                const isScanning = ref(false);
+                const isProcessing = ref(false);
+                const scanResult = ref(null);
+                const logsContainer = ref(null);
+                
+                const config = ref({
+                    input_dir: ".",
+                    output_dir: "processed_images",
+                    max_size_mb: 5,
+                    min_quality: 10,
+                    main_min_size: 800,
+                    main_max_size: 1800,
+                    detail_min_width: 800,
+                    detail_max_width: 1800,
+                    detail_split_height: 10000
+                });
+
+                const progress = ref({
+                    current: 0,
+                    total: 0,
+                    file: ""
+                });
+
+                const logs = ref([]);
+                let ws = null;
+
+                // Computed
+                const progressPercentage = computed(() => {
+                    if (progress.value.total === 0) return 0;
+                    return Math.round((progress.value.current / progress.value.total) * 100);
+                });
+
+                const statusText = computed(() => {
+                    if (isProcessing.value) return "处理中...";
+                    if (progress.value.total > 0 && progress.value.current === progress.value.total) return "已完成";
+                    return "就绪";
+                });
+
+                const statusColor = computed(() => {
+                    if (isProcessing.value) return "text-blue-600";
+                    if (progress.value.total > 0 && progress.value.current === progress.value.total) return "text-green-600";
+                    return "text-gray-500";
+                });
+
+                // Methods
+                const connectWebSocket = () => {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${window.location.host}/ws`;
+                    
+                    ws = new WebSocket(wsUrl);
+
+                    ws.onopen = () => {
+                        isConnected.value = true;
+                        addLog("系统连接成功", "success");
+                    };
+
+                    ws.onclose = () => {
+                        isConnected.value = false;
+                        addLog("系统连接断开，正在重试...", "warning");
+                        setTimeout(connectWebSocket, 3000);
+                    };
+
+                    ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        handleWsMessage(data);
+                    };
+                };
+
+                const handleWsMessage = (data) => {
+                    if (data.type === 'log') {
+                        addLog(data.message, data.log_type);
+                        if (data.progress) {
+                            progress.value = data.progress;
+                        }
+                    } else if (data.type === 'progress') {
+                        progress.value = data.progress;
+                    } else if (data.type === 'complete') {
+                        isProcessing.value = false;
+                        addLog("所有任务已完成！", "success");
+                    }
+                };
+
+                const addLog = (message, type = 'info') => {
+                    const time = new Date().toLocaleTimeString();
+                    logs.value.push({ message, type, time });
+                    
+                    // Auto scroll
+                    nextTick(() => {
+                        if (logsContainer.value) {
+                            logsContainer.value.scrollTop = logsContainer.value.scrollHeight;
+                        }
+                    });
+                };
+
+                const scanDirectory = async () => {
+                    isScanning.value = true;
+                    scanResult.value = null;
+                    try {
+                        const res = await fetch(`/api/scan?path=${encodeURIComponent(config.value.input_dir)}`);
+                        if (!res.ok) throw new Error('Scan failed');
+                        const data = await res.json();
+                        scanResult.value = data;
+                        addLog(`扫描完成: 发现 ${data.total_images} 张图片`, "success");
+                    } catch (err) {
+                        addLog(`扫描失败: ${err.message}`, "error");
+                    } finally {
+                        isScanning.value = false;
+                    }
+                };
+
+                const startProcessing = async () => {
+                    if (!scanResult.value) return;
+                    
+                    isProcessing.value = true;
+                    progress.value = { current: 0, total: scanResult.value.total_images, file: "Initializing..." };
+                    
+                    try {
+                        const res = await fetch('/api/process', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(config.value)
+                        });
+                        
+                        if (!res.ok) {
+                            const err = await res.json();
+                            throw new Error(err.message || 'Start failed');
+                        }
+                        
+                        addLog("任务已提交，开始后台处理...", "info");
+                    } catch (err) {
+                        isProcessing.value = false;
+                        addLog(`启动失败: ${err.message}`, "error");
+                    }
+                };
+                
+                const openFolder = async () => {
+                    try {
+                        const res = await fetch('/api/open-folder', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(config.value)
+                        });
+                        if (!res.ok) throw new Error('Failed to open folder');
+                    } catch (err) {
+                        addLog(`打开文件夹失败: ${err.message}`, "error");
+                    }
+                };
+
+                // Lifecycle
+                onMounted(() => {
+                    connectWebSocket();
+                    // Initialize icons
+                    lucide.createIcons();
+                });
+                
+                // Watch for DOM updates to re-render icons if needed (though Vue handles most)
+                watch(scanResult, () => {
+                    nextTick(() => lucide.createIcons());
+                });
+
+                return {
+                    isConnected,
+                    isScanning,
+                    isProcessing,
+                    scanResult,
+                    config,
+                    progress,
+                    progressPercentage,
+                    logs,
+                    logsContainer,
+                    statusText,
+                    statusColor,
+                    scanDirectory,
+                    startProcessing,
+                    openFolder
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
